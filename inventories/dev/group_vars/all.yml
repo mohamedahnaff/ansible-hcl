@@ -1,0 +1,20 @@
+project_name: "monthly_patching_aap"
+maintenance_window: "monthly"
+reboot_allowed: true
+report_output_dir: "/tmp/patch_reports"
+patch_run_id: "{{ lookup('pipe', 'date +%Y%m%d_%H%M%S') }}"
+
+root_min_free_mb: 1024
+reboot_timeout: 900
+post_reboot_delay: 20
+
+critical_services_default:
+  - sshd
+
+precheck_fail_on_low_disk: true
+collect_pending_updates: true
+validate_services_after_patch: true
+patching_enabled: true
+patch_exclude_packages: []
+
+patch_state_file: "/var/tmp/monthly_patching_state.json"

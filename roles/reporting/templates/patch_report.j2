@@ -1,0 +1,28 @@
+Monthly Patching Report
+=======================
+
+Project Name: {{ patch_state.project_name | default(project_name) }}
+Host: {{ patch_state.host | default(inventory_hostname) }}
+Run ID: {{ patch_state.patch_run_id | default(patch_run_id) }}
+Maintenance Window: {{ maintenance_window }}
+
+Patching
+--------
+Status: {{ patch_state.patching_status | default('unknown') }}
+Packages Changed: {{ patch_state.patch_changed | default('unknown') }}
+Reboot Required: {{ patch_state.patch_reboot_required | default('unknown') }}
+Patch Error: {{ patch_state.patch_error_message | default('') }}
+
+Reboot
+------
+Status: {{ patch_state.reboot_status | default('unknown') }}
+Reboot Error: {{ patch_state.reboot_error_message | default('') }}
+
+Postcheck
+---------
+Status: {{ patch_state.postcheck_status | default('unknown') }}
+Uptime After Patch: {{ patch_state.postcheck_uptime | default('unknown') }}
+Kernel Version: {{ patch_state.postcheck_kernel | default('unknown') }}
+Inactive Services: {{ patch_state.inactive_services | default([]) }}
+Postcheck Error: {{ patch_state.postcheck_error_message | default('') }}
+

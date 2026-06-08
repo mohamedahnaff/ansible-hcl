@@ -1,0 +1,11 @@
+- name: End-to-end monthly patching workflow
+  hosts: amazon_linux
+  gather_facts: true
+  become: true
+
+  roles:
+    - precheck
+    - patching
+    - reboot
+    - postcheck
+    - reporting

@@ -1,0 +1,147 @@
+- name: Show postcheck start message
+  ansible.builtin.debug:
+    msg: "Starting postcheck on {{ inventory_hostname }}"
+
+- name: Check whether patch state file exists
+  ansible.builtin.stat:
+    path: "{{ patch_state_file }}"
+  register: patch_state_stat
+
+- name: Fail if patch state file does not exist
+  ansible.builtin.fail:
+    msg: "Patch state file {{ patch_state_file }} not found on {{ inventory_hostname }}. Run patch.yml first."
+  when: not patch_state_stat.stat.exists
+
+- name: Read patch state file
+  ansible.builtin.slurp:
+    src: "{{ patch_state_file }}"
+  register: patch_state_raw
+
+- name: Parse patch state JSON
+  ansible.builtin.set_fact:
+    patch_state: "{{ patch_state_raw.content | b64decode | from_json }}"
+
+- name: Initialize postcheck facts
+  ansible.builtin.set_fact:
+    postcheck_status: "started"
+    postcheck_error_message: ""
+    effective_critical_services: "{{ critical_services | default(critical_services_default) }}"
+
+- name: Postcheck block
+  block:
+    - name: Verify host is reachable after patch/reboot
+      ansible.builtin.ping:
+
+    - name: Capture uptime after patching
+      ansible.builtin.command: uptime -p
+      register: postcheck_uptime_output
+      changed_when: false
+
+    - name: Capture running kernel version
+      ansible.builtin.command: uname -r
+      register: kernel_output
+      changed_when: false
+
+    - name: Check critical services state
+      ansible.builtin.command: "systemctl is-active {{ item }}"
+      loop: "{{ effective_critical_services }}"
+      register: service_check_results
+      changed_when: false
+      failed_when: false
+      when: validate_services_after_patch | bool
+
+    - name: Build inactive service list
+      ansible.builtin.set_fact:
+        inactive_services: >-
+          {{
+            service_check_results.results
+            | rejectattr('stdout', 'equalto', 'active')
+            | map(attribute='item')
+            | list
+          }}
+      when: validate_services_after_patch | bool
+
+    - name: Fail when critical services are not active
+      ansible.builtin.fail:
+        msg: "Critical services not active on {{ inventory_hostname }}: {{ inactive_services }}"
+      when:
+        - validate_services_after_patch | bool
+        - inactive_services | length > 0
+
+    - name: Save postcheck success facts
+      ansible.builtin.set_fact:
+        postcheck_status: "passed"
+        postcheck_uptime: "{{ postcheck_uptime_output.stdout }}"
+        postcheck_kernel: "{{ kernel_output.stdout }}"
+        inactive_services: "{{ inactive_services | default([]) }}"
+
+    - name: Update state file with postcheck results
+      ansible.builtin.copy:
+        dest: "{{ patch_state_file }}"
+        mode: "0644"
+        content: |
+          {
+            "project_name": "{{ patch_state.project_name | default(project_name) }}",
+            "host": "{{ patch_state.host | default(inventory_hostname) }}",
+            "patch_run_id": "{{ patch_state.patch_run_id | default(patch_run_id) }}",
+            "patching_status": "{{ patch_state.patching_status | default('unknown') }}",
+            "patch_changed": {{ patch_state.patch_changed | default(false) | to_json }},
+            "patch_reboot_required": {{ patch_state.patch_reboot_required | default(false) | to_json }},
+            "patch_error_message": {{ patch_state.patch_error_message | default('') | to_json }},
+            "reboot_status": "{{ patch_state.reboot_status | default('unknown') }}",
+            "reboot_error_message": {{ patch_state.reboot_error_message | default('') | to_json }},
+            "postcheck_status": "{{ postcheck_status }}",
+            "postcheck_uptime": {{ postcheck_uptime | to_json }},
+            "postcheck_kernel": {{ postcheck_kernel | to_json }},
+            "inactive_services": {{ inactive_services | default([]) | to_json }},
+            "postcheck_error_message": {{ postcheck_error_message | to_json }}
+          }
+
+    - name: Show postcheck summary
+      ansible.builtin.debug:
+        msg:
+          - "Postcheck status: {{ postcheck_status }}"
+          - "Postcheck uptime: {{ postcheck_uptime }}"
+          - "Kernel version: {{ postcheck_kernel }}"
+          - "Inactive services: {{ inactive_services | default([]) }}"
+
+  rescue:
+    - name: Save postcheck failure facts
+      ansible.builtin.set_fact:
+        postcheck_status: "failed"
+        postcheck_error_message: "{{ ansible_failed_result.msg | default('unknown postcheck error') }}"
+
+    - name: Update state file with postcheck failure
+      ansible.builtin.copy:
+        dest: "{{ patch_state_file }}"
+        mode: "0644"
+        content: |
+          {
+            "project_name": "{{ patch_state.project_name | default(project_name) }}",
+            "host": "{{ patch_state.host | default(inventory_hostname) }}",
+            "patch_run_id": "{{ patch_state.patch_run_id | default(patch_run_id) }}",
+            "patching_status": "{{ patch_state.patching_status | default('unknown') }}",
+            "patch_changed": {{ patch_state.patch_changed | default(false) | to_json }},
+            "patch_reboot_required": {{ patch_state.patch_reboot_required | default(false) | to_json }},
+            "patch_error_message": {{ patch_state.patch_error_message | default('') | to_json }},
+            "reboot_status": "{{ patch_state.reboot_status | default('unknown') }}",
+            "reboot_error_message": {{ patch_state.reboot_error_message | default('') | to_json }},
+            "postcheck_status": "{{ postcheck_status }}",
+            "postcheck_error_message": {{ postcheck_error_message | to_json }}
+          }
+
+    - name: Show postcheck error
+      ansible.builtin.debug:
+        msg:
+          - "Postcheck failed on {{ inventory_hostname }}"
+          - "Error: {{ postcheck_error_message }}"
+
+    - name: Fail postcheck role explicitly
+      ansible.builtin.fail:
+        msg: "Postcheck failed on {{ inventory_hostname }}: {{ postcheck_error_message }}"
+
+  always:
+    - name: Always show postcheck end state
+      ansible.builtin.debug:
+        msg:
+          - "Final postcheck status: {{ postcheck_status }}"

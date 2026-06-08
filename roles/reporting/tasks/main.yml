@@ -1,0 +1,43 @@
+- name: Check whether patch state file exists
+  ansible.builtin.stat:
+    path: "{{ patch_state_file }}"
+  register: patch_state_stat
+
+- name: Fail if patch state file does not exist
+  ansible.builtin.fail:
+    msg: "Patch state file {{ patch_state_file }} not found on {{ inventory_hostname }}. Run patch.yml first."
+  when: not patch_state_stat.stat.exists
+
+- name: Read patch state file
+  ansible.builtin.slurp:
+    src: "{{ patch_state_file }}"
+  register: patch_state_raw
+
+- name: Parse patch state JSON
+  ansible.builtin.set_fact:
+    patch_state: "{{ patch_state_raw.content | b64decode | from_json }}"
+
+- name: Ensure local report directory exists
+  ansible.builtin.file:
+    path: "{{ report_output_dir }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
+
+- name: Create patch report on control node
+  ansible.builtin.template:
+    src: patch_report.j2
+    dest: "{{ report_output_dir }}/{{ inventory_hostname }}_{{ patch_state.patch_run_id | default(patch_run_id) }}.txt"
+    mode: "0644"
+  delegate_to: localhost
+  become: false
+
+- name: Show reporting summary
+  ansible.builtin.debug:
+    msg:
+      - "Report created for {{ inventory_hostname }}"
+      - "Path: {{ report_output_dir }}/{{ inventory_hostname }}_{{ patch_state.patch_run_id | default(patch_run_id) }}.txt"
+      - "Patching status: {{ patch_state.patching_status | default('unknown') }}"
+      - "Reboot status: {{ patch_state.reboot_status | default('unknown') }}"
+      - "Postcheck status: {{ patch_state.postcheck_status | default('unknown') }}"

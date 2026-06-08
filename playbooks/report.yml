@@ -1,0 +1,7 @@
+- name: Build patching report
+  hosts: amazon_linux
+  gather_facts: true
+  become: true
+
+  roles:
+    - reporting

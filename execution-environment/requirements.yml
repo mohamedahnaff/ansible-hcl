@@ -1,0 +1,5 @@
+collections:
+  - name: ansible.posix
+  - name: amazon.aws
+  - name: awx.awx
+  - name: servicenow.itsm

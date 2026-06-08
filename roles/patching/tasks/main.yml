@@ -1,0 +1,101 @@
+- name: Show patching start message
+  ansible.builtin.debug:
+    msg: "Starting patching on {{ inventory_hostname }}"
+
+- name: Initialize patching facts
+  ansible.builtin.set_fact:
+    patching_status: "started"
+    patch_error_message: ""
+    patch_changed: false
+    patch_reboot_required: false
+
+- name: Run patching block
+  block:
+    - name: Patch all packages without exclusions
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+        update_only: true
+      register: patch_result
+      when:
+        - ansible_facts['os_family'] == "RedHat"
+        - patch_exclude_packages | length == 0
+
+    - name: Patch all packages with exclusions
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+        update_only: true
+        exclude: "{{ patch_exclude_packages | join(',') }}"
+      register: patch_result
+      when:
+        - ansible_facts['os_family'] == "RedHat"
+        - patch_exclude_packages | length > 0
+
+    - name: Save patching result facts
+      ansible.builtin.set_fact:
+        patch_changed: "{{ patch_result.changed | default(false) }}"
+        patching_status: "{{ 'patched' if (patch_result.changed | default(false)) else 'no_updates' }}"
+        patch_reboot_required: "{{ ((patch_result.changed | default(false)) and reboot_allowed | bool) | bool }}"
+
+    - name: Write patching state file on target
+      ansible.builtin.copy:
+        dest: "{{ patch_state_file }}"
+        mode: "0644"
+        content: |
+          {
+            "project_name": "{{ project_name }}",
+            "host": "{{ inventory_hostname }}",
+            "patch_run_id": "{{ patch_run_id }}",
+            "patching_status": "{{ patching_status }}",
+            "patch_changed": {{ patch_changed | to_json }},
+            "patch_reboot_required": {{ patch_reboot_required | to_json }},
+            "patch_error_message": {{ patch_error_message | to_json }}
+          }
+
+    - name: Show patching summary
+      ansible.builtin.debug:
+        msg:
+          - "Patching status: {{ patching_status }}"
+          - "Packages changed: {{ patch_changed }}"
+          - "Reboot required: {{ patch_reboot_required }}"
+          - "State file: {{ patch_state_file }}"
+
+  rescue:
+    - name: Save patching failure facts
+      ansible.builtin.set_fact:
+        patching_status: "failed"
+        patch_reboot_required: false
+        patch_error_message: "{{ ansible_failed_result.msg | default('unknown patching error') }}"
+
+    - name: Write failed patching state file on target
+      ansible.builtin.copy:
+        dest: "{{ patch_state_file }}"
+        mode: "0644"
+        content: |
+          {
+            "project_name": "{{ project_name }}",
+            "host": "{{ inventory_hostname }}",
+            "patch_run_id": "{{ patch_run_id }}",
+            "patching_status": "{{ patching_status }}",
+            "patch_changed": false,
+            "patch_reboot_required": false,
+            "patch_error_message": {{ patch_error_message | to_json }}
+          }
+
+    - name: Show patching error
+      ansible.builtin.debug:
+        msg:
+          - "Patching failed on {{ inventory_hostname }}"
+          - "Error: {{ patch_error_message }}"
+
+    - name: Fail patching role explicitly
+      ansible.builtin.fail:
+        msg: "Patching failed on {{ inventory_hostname }}: {{ patch_error_message }}"
+
+  always:
+    - name: Always show patching end state
+      ansible.builtin.debug:
+        msg:
+          - "Final patching status: {{ patching_status }}"
+          - "Final reboot required: {{ patch_reboot_required }}"

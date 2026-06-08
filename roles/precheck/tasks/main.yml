@@ -1,0 +1,61 @@
+- name: Show precheck start message
+  ansible.builtin.debug:
+    msg: "Starting precheck on {{ inventory_hostname }}"
+
+- name: Ping target host
+  ansible.builtin.ping:
+
+- name: Validate expected OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] == os_family_expected
+    fail_msg: "Unexpected OS family on {{ inventory_hostname }}. Found {{ ansible_facts['os_family'] }}"
+    success_msg: "OS family validation passed for {{ inventory_hostname }}"
+
+- name: Capture uptime
+  ansible.builtin.command: uptime -p
+  register: uptime_output
+  changed_when: false
+
+- name: Display uptime
+  ansible.builtin.debug:
+    var: uptime_output.stdout
+
+- name: Gather mounted filesystem facts
+  ansible.builtin.set_fact:
+    root_mount_info: "{{ ansible_facts['mounts'] | selectattr('mount', 'equalto', precheck_root_mount) | list | first }}"
+
+- name: Show root filesystem details
+  ansible.builtin.debug:
+    msg:
+      - "Mount: {{ root_mount_info.mount }}"
+      - "Available bytes: {{ root_mount_info.size_available }}"
+      - "Available MB: {{ (root_mount_info.size_available / 1024 / 1024) | int }}"
+
+- name: Fail if root filesystem free space is too low
+  ansible.builtin.fail:
+    msg: "Root filesystem free space is below {{ root_min_free_mb }} MB on {{ inventory_hostname }}"
+  when:
+    - precheck_fail_on_low_disk | bool
+    - (root_mount_info.size_available / 1024 / 1024) | int < root_min_free_mb
+
+- name: Check pending updates
+  ansible.builtin.command: "{{ check_update_cmd }}"
+  register: check_updates_result
+  changed_when: false
+  failed_when: check_updates_result.rc not in [0, 100]
+  when: collect_pending_updates | bool
+
+- name: Show pending update check result
+  ansible.builtin.debug:
+    msg:
+      - "Return code: {{ check_updates_result.rc | default('N/A') }}"
+      - "Updates output:"
+      - "{{ check_updates_result.stdout_lines | default([]) }}"
+  when: collect_pending_updates | bool
+
+- name: Save precheck summary facts
+  ansible.builtin.set_fact:
+    precheck_status: "passed"
+    precheck_uptime: "{{ uptime_output.stdout }}"
+    precheck_root_free_mb: "{{ (root_mount_info.size_available / 1024 / 1024) | int }}"

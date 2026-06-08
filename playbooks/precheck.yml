@@ -1,0 +1,7 @@
+- name: Precheck for monthly patching
+  hosts: amazon_linux
+  gather_facts: true
+  become: true
+
+  roles:
+    - precheck

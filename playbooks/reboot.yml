@@ -1,0 +1,7 @@
+- name: Reboot servers after patching
+  hosts: amazon_linux
+  gather_facts: true
+  become: true
+
+  roles:
+    - reboot

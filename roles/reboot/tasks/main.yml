@@ -1,0 +1,114 @@
+- name: Show reboot role start message
+  ansible.builtin.debug:
+    msg: "Starting reboot evaluation on {{ inventory_hostname }}"
+
+- name: Check whether patch state file exists
+  ansible.builtin.stat:
+    path: "{{ patch_state_file }}"
+  register: patch_state_stat
+
+- name: Fail if patch state file does not exist
+  ansible.builtin.fail:
+    msg: "Patch state file {{ patch_state_file }} not found on {{ inventory_hostname }}. Run patch.yml first."
+  when: not patch_state_stat.stat.exists
+
+- name: Read patch state file
+  ansible.builtin.slurp:
+    src: "{{ patch_state_file }}"
+  register: patch_state_raw
+
+- name: Parse patch state JSON
+  ansible.builtin.set_fact:
+    patch_state: "{{ patch_state_raw.content | b64decode | from_json }}"
+
+- name: Show patch state
+  ansible.builtin.debug:
+    var: patch_state
+
+- name: Initialize reboot facts
+  ansible.builtin.set_fact:
+    reboot_status: "pending"
+    reboot_error_message: ""
+    patch_reboot_required_effective: "{{ patch_state.patch_reboot_required | default(false) | bool }}"
+
+- name: Reboot block
+  block:
+    - name: Reboot host when required
+      ansible.builtin.reboot:
+        reboot_timeout: "{{ reboot_timeout }}"
+        post_reboot_delay: "{{ post_reboot_delay }}"
+        test_command: "{{ reboot_test_command }}"
+      register: reboot_result
+      when: patch_reboot_required_effective
+
+    - name: Set reboot status when reboot happened
+      ansible.builtin.set_fact:
+        reboot_status: "rebooted"
+      when: patch_reboot_required_effective
+
+    - name: Set reboot status when reboot was skipped
+      ansible.builtin.set_fact:
+        reboot_status: "skipped"
+      when: not patch_reboot_required_effective
+
+    - name: Update state file with reboot status
+      ansible.builtin.copy:
+        dest: "{{ patch_state_file }}"
+        mode: "0644"
+        content: |
+          {
+            "project_name": "{{ patch_state.project_name | default(project_name) }}",
+            "host": "{{ patch_state.host | default(inventory_hostname) }}",
+            "patch_run_id": "{{ patch_state.patch_run_id | default(patch_run_id) }}",
+            "patching_status": "{{ patch_state.patching_status | default('unknown') }}",
+            "patch_changed": {{ patch_state.patch_changed | default(false) | to_json }},
+            "patch_reboot_required": {{ patch_state.patch_reboot_required | default(false) | to_json }},
+            "patch_error_message": {{ patch_state.patch_error_message | default('') | to_json }},
+            "reboot_status": "{{ reboot_status }}",
+            "reboot_error_message": {{ reboot_error_message | to_json }}
+          }
+
+    - name: Show reboot summary
+      ansible.builtin.debug:
+        msg:
+          - "Reboot status: {{ reboot_status }}"
+          - "Patch reboot required: {{ patch_reboot_required_effective }}"
+
+  rescue:
+    - name: Save reboot failure facts
+      ansible.builtin.set_fact:
+        reboot_status: "failed"
+        reboot_error_message: "{{ ansible_failed_result.msg | default('unknown reboot error') }}"
+
+    - name: Update state file with reboot failure
+      ansible.builtin.copy:
+        dest: "{{ patch_state_file }}"
+        mode: "0644"
+        content: |
+          {
+            "project_name": "{{ patch_state.project_name | default(project_name) }}",
+            "host": "{{ patch_state.host | default(inventory_hostname) }}",
+            "patch_run_id": "{{ patch_state.patch_run_id | default(patch_run_id) }}",
+            "patching_status": "{{ patch_state.patching_status | default('unknown') }}",
+            "patch_changed": {{ patch_state.patch_changed | default(false) | to_json }},
+            "patch_reboot_required": {{ patch_state.patch_reboot_required | default(false) | to_json }},
+            "patch_error_message": {{ patch_state.patch_error_message | default('') | to_json }},
+            "reboot_status": "{{ reboot_status }}",
+            "reboot_error_message": {{ reboot_error_message | to_json }}
+          }
+
+    - name: Show reboot error
+      ansible.builtin.debug:
+        msg:
+          - "Reboot failed on {{ inventory_hostname }}"
+          - "Error: {{ reboot_error_message }}"
+
+    - name: Fail reboot role explicitly
+      ansible.builtin.fail:
+        msg: "Reboot failed on {{ inventory_hostname }}: {{ reboot_error_message }}"
+
+  always:
+    - name: Always show final reboot state
+      ansible.builtin.debug:
+        msg:
+          - "Final reboot status: {{ reboot_status }}"

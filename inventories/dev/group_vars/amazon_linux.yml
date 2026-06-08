@@ -1,0 +1,4 @@
+package_manager_cmd: "dnf"
+check_update_cmd: "dnf check-update"
+update_cmd: "dnf update -y"
+os_family_expected: "RedHat"

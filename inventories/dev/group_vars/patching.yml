@@ -1,0 +1,6 @@
+patching_enabled: true
+collect_pending_updates: true
+validate_services_after_patch: true
+
+patch_exclude_packages: []
+precheck_fail_on_low_disk: true

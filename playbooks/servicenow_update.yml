@@ -1,0 +1,6 @@
+- name: Update ServiceNow change record
+  hosts: localhost
+  gather_facts: false
+
+  roles:
+    - servicenow_update

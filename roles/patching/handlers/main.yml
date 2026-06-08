@@ -1,0 +1,3 @@
+- name: Placeholder handler
+  ansible.builtin.debug:
+    msg: "Handler placeholder"

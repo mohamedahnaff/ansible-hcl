@@ -18,3 +18,5 @@ patching_enabled: true
 patch_exclude_packages: []
 
 patch_state_file: "/var/tmp/monthly_patching_state.json"
+
+target_report_file: "/var/tmp/monthly_patch_report.txt"

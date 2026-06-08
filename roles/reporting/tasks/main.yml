@@ -17,27 +17,16 @@
   ansible.builtin.set_fact:
     patch_state: "{{ patch_state_raw.content | b64decode | from_json }}"
 
-- name: Ensure local report directory exists
-  ansible.builtin.file:
-    path: "{{ report_output_dir }}"
-    state: directory
-    mode: "0755"
-  delegate_to: localhost
-  become: false
-
-- name: Create patch report on control node
+- name: Write patch report on target host
   ansible.builtin.template:
     src: patch_report.j2
-    dest: "{{ report_output_dir }}/{{ inventory_hostname }}_{{ patch_state.patch_run_id | default(patch_run_id) }}.txt"
+    dest: "{{ target_report_file }}"
     mode: "0644"
-  delegate_to: localhost
-  become: false
 
-- name: Show reporting summary
+- name: Show reporting summary in job output
   ansible.builtin.debug:
     msg:
-      - "Report created for {{ inventory_hostname }}"
-      - "Path: {{ report_output_dir }}/{{ inventory_hostname }}_{{ patch_state.patch_run_id | default(patch_run_id) }}.txt"
+      - "Report created on target host: {{ target_report_file }}"
       - "Patching status: {{ patch_state.patching_status | default('unknown') }}"
       - "Reboot status: {{ patch_state.reboot_status | default('unknown') }}"
       - "Postcheck status: {{ patch_state.postcheck_status | default('unknown') }}"

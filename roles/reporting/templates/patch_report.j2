@@ -3,7 +3,7 @@ Monthly Patching Report
 
 Project Name: {{ patch_state.project_name | default(project_name) }}
 Host: {{ patch_state.host | default(inventory_hostname) }}
-Run ID: {{ patch_state.patch_run_id | default(patch_run_id) }}
+Run ID: {{ patch_state.patch_run_id | default('unknown') }}
 Maintenance Window: {{ maintenance_window }}
 
 Patching
@@ -22,28 +22,6 @@ Postcheck
 ---------
 Status: {{ patch_state.postcheck_status | default('unknown') }}
 Uptime After Patch: {{ patch_state.postcheck_uptime | default('unknown') }}
-Kernel Version: {{ patch_state.postcheckYes — **your guess is correct**: the **report step is creating a file**, but in your current AAP-based run, it is **most likely not creating it on your Ubuntu shell’s `/tmp`**. Since AAP jobs run inside **Execution Environments (containers)**, anything written with `delegate_to: localhost` goes to the **job runtime/container context**, not necessarily to the filesystem you see when you SSH to your Ubuntu control node. That is why `/tmp/patch_reports` was missing on your Ubuntu shell even though the workflow completed. [1](https://oneuptime.com/blog/post/2026-02-21-create-credentials-awx/view)[2](https://fale.io/blog/2023/09/18/use-per-host-ssh-key-pairs-on-awx-and-ansible-automation-controller)
-
-Also, AAP/AWX does **not** currently have a simple built-in “download arbitrary generated file from the job results page” experience, so the common practical pattern is either:
-- print the result into the **job output**, or
-- write/publish the file somewhere explicit and reachable. [3](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7)
-
----
-
-# Best way to **finish the task now** (without a big redesign)
-
-Since you want to **finish the task now** and keep the redesign for later, the **simplest clean finish** is:
-
-1. **Generate the report file on the target host**  
-2. **Also show a short summary in the AAP job output**  
-
-That avoids execution-environment `/tmp` confusion and gives you something you can prove easily. Because AAP centralizes job output/history, printing a summary there is very useful for demonstration and validation. [1](https://oneuptime.com/blog/post/2026-02-21-create-credentials-awx/view)[3](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7)[4](https://www.man7.org/linux/man-pages/man1/ssh-keygen.1.html)
-
----
-
-# What this means practically
-
-Instead of trying to write the report to:
-
-```text
-/tmp/patch_reports
+Kernel Version: {{ patch_state.postcheck_kernel | default('unknown') }}
+Inactive Services: {{ patch_state.inactive_services | default([]) }}
+Postcheck Error: {{ patch_state.postcheck_error_message | default('') }}
